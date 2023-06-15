@@ -1,17 +1,4 @@
-# coding=utf-8
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 """GPT-2 model."""
 
@@ -19,8 +6,13 @@ from functools import partial
 import torch
 
 from megatron import get_args
+<<<<<<< HEAD
 from megatron import mpu
 from .module import MegatronModule, fp32_to_float16
+=======
+from megatron.core import mpu, tensor_parallel
+from .module import MegatronModule, fp32_to_float16, float16_to_fp32
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
 
 from .enums import AttnMaskType
 from .language_model import parallel_lm_logits
@@ -28,39 +20,44 @@ from .language_model import get_language_model
 from .utils import init_method_normal
 from .utils import scaled_init_method_normal
 
+<<<<<<< HEAD
 from deepspeed.pipe import PipelineModule, LayerSpec, TiedLayerSpec
 from megatron.model import LayerNorm
 from megatron.model.module import float16_to_fp32
 from .language_model import EmbeddingPipe
 from .transformer import ParallelTransformerLayerPipe
 
+=======
+from megatron.model import LayerNorm
+from .language_model import EmbeddingPipe
+from .transformer import ParallelTransformerLayerPipe
+from deepspeed.pipe import PipelineModule, LayerSpec, TiedLayerSpec
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
 
 def post_language_model_processing(lm_output, labels, logit_weights,
-                                   get_key_value, parallel_output,
-                                   forward_method_parallel_output,
+                                   parallel_output,
                                    fp16_lm_cross_entropy):
-    if get_key_value:
-        lm_output, presents = lm_output
 
-    # Output.
-    if forward_method_parallel_output is not None:
-        parallel_output = forward_method_parallel_output
+    # Output. Format [s b h]
     output = parallel_lm_logits(
         lm_output,
         logit_weights,
         parallel_output)
 
-    if get_key_value:
-        output = [output, presents]
-
     if labels is None:
-        return output
+        # [s b h] => [b s h]
+        return output.transpose(0, 1).contiguous()
     else:
+        # [b s] => [s b]
+        labels = labels.transpose(0, 1).contiguous()
         if fp16_lm_cross_entropy:
             assert output.dtype == torch.half
-            loss = mpu.vocab_parallel_cross_entropy(output, labels)
+            loss = tensor_parallel.vocab_parallel_cross_entropy(output, labels)
         else:
-            loss = mpu.vocab_parallel_cross_entropy(output.float(), labels)
+            loss = tensor_parallel.vocab_parallel_cross_entropy(output.float(), labels)
+
+        # [s b] => [b, s]
+        loss = loss.transpose(0, 1).contiguous()
         return loss
 
 
@@ -73,14 +70,23 @@ class GPTModel(MegatronModule):
                  pre_process=True,
                  post_process=True,
                  return_moe_loss=True):
+<<<<<<< HEAD
         super(GPTModel, self).__init__()
+=======
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
         args = get_args()
+        super(GPTModel, self).__init__(share_word_embeddings=not args.untie_embeddings_and_output_weights)
 
         self.parallel_output = parallel_output
         self.pre_process = pre_process
         self.post_process = post_process
         self.fp16_lm_cross_entropy = args.fp16_lm_cross_entropy
         self.return_moe_loss = return_moe_loss
+<<<<<<< HEAD
+=======
+        self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
+
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
         self.language_model, self._language_model_key = get_language_model(
             num_tokentypes=num_tokentypes,
             add_pooler=False,
@@ -89,17 +95,27 @@ class GPTModel(MegatronModule):
             scaled_init_method=scaled_init_method_normal(args.init_method_std, args.num_layers),
             num_experts=args.num_experts,
             pre_process=self.pre_process,
-            post_process=self.post_process)
-
-        self.initialize_word_embeddings(init_method_normal)
+            post_process=self.post_process,
+            num_experts=args.num_experts)
+        
+        if not args.untie_embeddings_and_output_weights:
+            self.initialize_word_embeddings(init_method_normal)
 
     def set_input_tensor(self, input_tensor):
         """See megatron.model.transformer.set_input_tensor()"""
         self.language_model.set_input_tensor(input_tensor)
 
+<<<<<<< HEAD
     def forward(self, input_ids, position_ids, attention_mask, labels=None,
                 tokentype_ids=None, layer_past=None, get_key_value=False,
                 forward_method_parallel_output=None, curriculum_seqlen=None):
+=======
+    def forward(self, input_ids, position_ids, attention_mask,
+                retriever_input_ids=None,
+                retriever_position_ids=None,
+                retriever_attn_mask=None,
+                labels=None, tokentype_ids=None, inference_params=None, curriculum_seqlen=None):
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
         args = get_args()
         if curriculum_seqlen is not None:
             args.curriculum_seqlen = curriculum_seqlen
@@ -110,6 +126,7 @@ class GPTModel(MegatronModule):
                 position_ids = position_ids[:, :curriculum_seqlen].contiguous()
                 if labels is not None:
                     labels = labels[:, :curriculum_seqlen].contiguous()
+<<<<<<< HEAD
 
                 # attention_mask has size [1, 1, seqlen, seqlen]
                 attention_mask = attention_mask[:, :, :curriculum_seqlen, :curriculum_seqlen].contiguous()
@@ -118,15 +135,28 @@ class GPTModel(MegatronModule):
                 # If got a None input, need to reset curriculum_seqlen on user side
                 args.curriculum_seqlen = args.seq_length
 
+=======
+
+                # attention_mask has size [1, 1, seqlen, seqlen]
+                attention_mask = attention_mask[:, :, :curriculum_seqlen, :curriculum_seqlen].contiguous()
+        else:
+            if args.curriculum_learning_legacy:
+                # If got a None input, need to reset curriculum_seqlen on user side
+                args.curriculum_seqlen = args.seq_length
+
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
         lm_output, *moe_losses = self.language_model(
             input_ids,
             position_ids,
             attention_mask,
-            layer_past=layer_past,
-            get_key_value=get_key_value)
+            retriever_input_ids=retriever_input_ids,
+            retriever_position_ids=retriever_position_ids,
+            retriever_attn_mask=retriever_attn_mask,
+            inference_params=inference_params)
 
         if self.post_process:
             lm_output = post_language_model_processing(
+<<<<<<< HEAD
                     lm_output, labels,
                     self.word_embeddings_weight(),
                     get_key_value,
@@ -134,17 +164,27 @@ class GPTModel(MegatronModule):
                     forward_method_parallel_output,
                     self.fp16_lm_cross_entropy)
         
+=======
+                lm_output, labels,
+                self.language_model.output_layer.weight if self.untie_embeddings_and_output_weights else self.word_embeddings_weight(),
+                self.parallel_output,
+                self.fp16_lm_cross_entropy)
+
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
         if self.return_moe_loss:
             return (lm_output, *moe_losses)
         else:
             return lm_output
 
-    def state_dict_for_save_checkpoint(self, destination=None, prefix='',
-                                       keep_vars=False):
+    def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
 
         state_dict_ = {}
         language_model_state_dict = self.language_model.state_dict_for_save_checkpoint(
+<<<<<<< HEAD
                 destination, prefix, keep_vars)
+=======
+            prefix=prefix, keep_vars=keep_vars)
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
         # MoE states need to be handled separately by DeepSpeed engine, thus
         # moving them to the top level dictionary
         if "moe_state_dict" in language_model_state_dict:
@@ -153,16 +193,17 @@ class GPTModel(MegatronModule):
             del language_model_state_dict["moe_state_dict"]
         state_dict_[self._language_model_key] = language_model_state_dict
         # Save word_embeddings.
-        if self.post_process and not self.pre_process:
+        if self.post_process and not self.pre_process and not self.untie_embeddings_and_output_weights:
             state_dict_[self._word_embeddings_for_head_key] \
-                = self.word_embeddings.state_dict(destination, prefix, keep_vars)
+                = self.word_embeddings.state_dict(prefix=prefix,
+                                                  keep_vars=keep_vars)
         return state_dict_
 
     def load_state_dict(self, state_dict, strict=True):
         """Customized load."""
 
         # Load word_embeddings.
-        if self.post_process and not self.pre_process:
+        if self.post_process and not self.pre_process and not self.untie_embeddings_and_output_weights:
             self.word_embeddings.load_state_dict(
                 state_dict[self._word_embeddings_for_head_key], strict=strict)
         # Gather MoE states and move under language model
@@ -182,7 +223,15 @@ def CrossEntropy(output, labels):
 
     args = get_args()
 
+<<<<<<< HEAD
     losses = mpu.vocab_parallel_cross_entropy(output.contiguous().float(), labels)
+=======
+    # [b s] => [s b]
+    labels = labels.transpose(0, 1).contiguous()
+    losses = tensor_parallel.vocab_parallel_cross_entropy(output.contiguous().float(), labels)
+    # [s b] => [b, s]
+    losses = losses.transpose(0, 1).contiguous()
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
     loss_mask = loss_mask.view(-1)
     loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
     return loss

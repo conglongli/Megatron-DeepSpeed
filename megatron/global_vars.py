@@ -1,42 +1,38 @@
-# coding=utf-8
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 """Megatron global variables."""
 
 import os
 import sys
-import time
-
 import torch
 
+from megatron import dist_signal_handler
 from megatron.tokenizer import build_tokenizer
-from .arguments import parse_args
 from .microbatches import build_num_microbatches_calculator
+<<<<<<< HEAD
 from deepspeed.accelerator import get_accelerator
+=======
+from .timers import Timers
+
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
 _GLOBAL_ARGS = None
+_GLOBAL_RETRO_ARGS = None
 _GLOBAL_NUM_MICROBATCHES_CALCULATOR = None
 _GLOBAL_TOKENIZER = None
 _GLOBAL_TENSORBOARD_WRITER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
-
+_GLOBAL_SIGNAL_HANDLER = None
 
 def get_args():
     """Return arguments."""
     _ensure_var_is_initialized(_GLOBAL_ARGS, 'args')
     return _GLOBAL_ARGS
+
+
+def get_retro_args():
+    """Return retro arguments."""
+    return _GLOBAL_RETRO_ARGS
 
 
 def get_num_microbatches():
@@ -76,29 +72,44 @@ def get_timers():
     return _GLOBAL_TIMERS
 
 
-def set_global_variables(extra_args_provider=None, args_defaults={},
-                         ignore_unknown_args=False):
+def get_signal_handler():
+    _ensure_var_is_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
+    return _GLOBAL_SIGNAL_HANDLER
+
+
+def _set_signal_handler():
+    global _GLOBAL_SIGNAL_HANDLER
+    _ensure_var_is_not_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
+    _GLOBAL_SIGNAL_HANDLER = dist_signal_handler.DistributedSignalHandler().__enter__()
+
+
+
+def set_global_variables(args):
     """Set args, tokenizer, tensorboard-writer, adlr-autoresume, and timers."""
-    args = _parse_args(extra_args_provider=extra_args_provider,
-                       defaults=args_defaults,
-                       ignore_unknown_args=ignore_unknown_args)
+
+    assert args is not None
+
+    _ensure_var_is_not_initialized(_GLOBAL_ARGS, 'args')
+    set_args(args)
+
     _build_num_microbatches_calculator(args)
-    if args.vocab_file:
-        _ = _build_tokenizer(args)
+    _ = _build_tokenizer(args)
     _set_tensorboard_writer(args)
     _set_adlr_autoresume(args)
-    _set_timers()
+    _set_timers(args)
 
+    if args.exit_signal_handler:
+        _set_signal_handler()
+    
 
-def _parse_args(extra_args_provider=None, defaults={},
-                ignore_unknown_args=False):
-    """Parse entire arguments."""
+def set_args(args):
     global _GLOBAL_ARGS
-    _ensure_var_is_not_initialized(_GLOBAL_ARGS, 'args')
-    _GLOBAL_ARGS = parse_args(extra_args_provider=extra_args_provider,
-                              defaults=defaults,
-                              ignore_unknown_args=ignore_unknown_args)
-    return _GLOBAL_ARGS
+    _GLOBAL_ARGS = args
+
+
+def set_retro_args(retro_args):
+    global _GLOBAL_RETRO_ARGS
+    _GLOBAL_RETRO_ARGS = retro_args
 
 
 def _build_num_microbatches_calculator(args):
@@ -132,7 +143,7 @@ def _set_tensorboard_writer(args):
                                    'tensorboard writer')
 
     if hasattr(args, 'tensorboard_dir') and \
-       args.tensorboard_dir and args.rank == (args.world_size - 1):
+       args.tensorboard_dir and args.rank == 0:
         try:
             from torch.utils.tensorboard import SummaryWriter
             print('> setting tensorboard ...')
@@ -163,11 +174,11 @@ def _set_adlr_autoresume(args):
         _GLOBAL_ADLR_AUTORESUME = AutoResume
 
 
-def _set_timers():
+def _set_timers(args):
     """Initialize timers."""
     global _GLOBAL_TIMERS
     _ensure_var_is_not_initialized(_GLOBAL_TIMERS, 'timers')
-    _GLOBAL_TIMERS = Timers()
+    _GLOBAL_TIMERS = Timers(args.timing_log_level, args.timing_log_option)
 
 
 def _ensure_var_is_initialized(var, name):
@@ -180,6 +191,7 @@ def _ensure_var_is_not_initialized(var, name):
     assert var is None, '{} is already initialized.'.format(name)
 
 
+<<<<<<< HEAD
 class _Timer:
     """Timer."""
 
@@ -260,3 +272,6 @@ class Timers:
                 print(string, flush=True)
         else:
             print(string, flush=True)
+=======
+
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677

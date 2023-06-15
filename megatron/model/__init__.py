@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # coding=utf-8
 # Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
 #
@@ -17,6 +18,12 @@ if get_accelerator().device_name() == 'cuda':
     from .fused_layer_norm import MixedFusedLayerNorm as LayerNorm
 else:
     from torch.nn import LayerNorm
+=======
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+
+from .fused_layer_norm import MixedFusedLayerNorm as LayerNorm
+
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
 from .distributed import DistributedDataParallel
 from .bert_model import BertModel
 from .gpt_model import GPTModel, GPTModelPipe

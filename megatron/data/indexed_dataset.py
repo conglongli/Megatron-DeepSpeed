@@ -98,9 +98,15 @@ dtypes = {
     3: np.int16,
     4: np.int32,
     5: np.int64,
+<<<<<<< HEAD
     6: np.float32,
     7: np.float64,
     8: np.uint16
+=======
+    6: np.float64,
+    7: np.float32,
+    8: np.uint16,
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
 }
 
 
@@ -272,7 +278,11 @@ class IndexedDatasetBuilder(object):
         np.int32: 4,
         np.int64: 8,
         np.float32: 4,
+<<<<<<< HEAD
         np.float64: 8
+=======
+        np.float64: 8,
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
     }
 
     def __init__(self, out_file, dtype=np.int32):
@@ -304,10 +314,13 @@ class IndexedDatasetBuilder(object):
         for data_offset in index.data_offsets[1:]:
             self.data_offsets.append(begin + data_offset)
         self.sizes.extend(index.sizes)
+
         begin = self.dim_offsets[-1]
         for dim_offset in index.dim_offsets[1:]:
             self.dim_offsets.append(begin + dim_offset)
         self.doc_idx.extend( (doc_offset + index.doc_idx)[1:] )
+
+        self.doc_idx.extend((doc_offset + index.doc_idx)[1:])
 
         with open(data_file_path(another_file), 'rb') as f:
             while True:
@@ -492,7 +505,7 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
         return self._path
 
     def __setstate__(self, state):
-        self._do_init(state)
+        self._do_init(state, skip_warmup=True)
 
     def _do_init(self, path, skip_warmup):
         self._path = path
@@ -516,7 +529,7 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
 
     # @lru_cache(maxsize=8)
     def __getitem__(self, idx):
-        if isinstance(idx, int):
+        if isinstance(idx, (int, np.integer)):
             ptr, size = self._index[idx]
             np_array = np.frombuffer(self._bin_buffer, dtype=self._index.dtype,
                                      count=size, offset=ptr)
@@ -533,6 +546,8 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
                                      count=total_size, offset=ptr)
             sents = np.split(np_array, offsets[:-1])
             return sents
+        else:
+            raise TypeError("Unexpected type received for idx: {}".format(type(idx)))
 
     def get(self, idx, offset=0, length=None):
         """ Retrieves a single item from the dataset with the option to only
@@ -592,6 +607,12 @@ class MMapIndexedDatasetBuilder(object):
         self._data_file.write(np_array.tobytes(order='C'))
         self._sizes.append(np_array.size)
 
+    def add_doc(self, tensor, sizes):
+        np_array = np.array(tensor, dtype=self._dtype)
+        self._data_file.write(np_array.tobytes(order='C'))
+        self._sizes.extend(sizes)
+        self._doc_idx.append(len(self._sizes))
+
     def end_document(self):
         self._doc_idx.append(len(self._sizes))
 
@@ -600,12 +621,18 @@ class MMapIndexedDatasetBuilder(object):
         index = MMapIndexedDataset.Index(index_file_path(another_file))
         assert index.dtype == self._dtype
 
+<<<<<<< HEAD
         total_len = len(index.sizes)+len(self._sizes)
         print(f"    concat {another_file} size={len(index.sizes)} for a total size of {total_len}")
 
         offset = len(self._sizes)
         self._sizes.extend(index.sizes)
         self._doc_idx.extend( (offset + index.doc_idx)[1:] )
+=======
+        offset = len(self._sizes)
+        self._sizes.extend(index.sizes)
+        self._doc_idx.extend((offset + index.doc_idx)[1:])
+>>>>>>> 628e32bf8dc1d203bd4a5c1eaab92a25c8ec0677
 
         # Concatenate data
         with open(data_file_path(another_file), 'rb') as f:
